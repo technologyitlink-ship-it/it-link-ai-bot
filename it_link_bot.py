@@ -3,14 +3,20 @@ import json
 import requests
 from flask import Flask, request, jsonify
 from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables from .env file for local development
+load_dotenv()
 
 app = Flask(__name__)
 
 # --- Configuration ---
-VERIFY_TOKEN = "itlink_verify_token_123"
-PAGE_ACCESS_TOKEN = "EAASdREpsBg4BRJLmKbsgKmF1bKZCzOTTAST7nZAcYwHrhMx9r9Bd16K6ZA8E6pq8fjM3UR4MUfQFhMmZC6j8ZB0B3VILG7WyJucMKICDiktPCeFShW42WCXcKmINDcDZCieuS5tDmZC7IYpH3ws7IvQYOtpiPuoCb6Ig7OZBoHj2LA5RZANhvcY5waXaB1uYAZCZCNxQ5lPHHC5"
+# Use environment variables for sensitive tokens
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "itlink_verify_token_123")
+PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
+# Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 PAGE_CONTEXT = """
@@ -34,8 +40,9 @@ Instructions:
 
 def get_ai_response(user_message):
     try:
+        # Fixed model name from "gpt-4.1-mini" to "gpt-4o-mini"
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": PAGE_CONTEXT},
                 {"role": "user", "content": user_message}
@@ -47,6 +54,10 @@ def get_ai_response(user_message):
         return "တောင်းပန်ပါတယ်၊ အခုလောလောဆယ် အဆင်မပြေဖြစ်နေလို့ ခဏနေမှ ပြန်မေးပေးပါခင်ဗျာ။"
 
 def send_message(recipient_id, message_text):
+    if not PAGE_ACCESS_TOKEN:
+        print("Error: PAGE_ACCESS_TOKEN is not set.")
+        return None
+        
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
         "recipient": {"id": recipient_id},
@@ -84,8 +95,11 @@ def webhook():
     
     if data.get("object") == "page":
         for entry in data.get("entry", []):
-            for messaging_event in entry.get("messaging", []):
-                if messaging_event.get("message"):
+            # Check for 'messaging' events
+            messaging_events = entry.get("messaging", [])
+            for messaging_event in messaging_events:
+                # Handle incoming messages
+                if "message" in messaging_event and not messaging_event["message"].get("is_echo"):
                     sender_id = messaging_event["sender"]["id"]
                     message_text = messaging_event["message"].get("text")
                     
@@ -98,4 +112,6 @@ def webhook():
     return "Not Found", 404
 
 if __name__ == "__main__":
-    app.run(port=8080, host="0.0.0.0")
+    # Railway provides the PORT environment variable
+    port = int(os.environ.get("PORT", 8080))
+    app.run(port=port, host="0.0.0.0")

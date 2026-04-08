@@ -1,1 +1,1 @@
-web: python it_link_bot.py
+web: gunicorn it_link_bot:app
