@@ -51,7 +51,7 @@ def get_ai_response(user_message):
             return get_fallback_response(user_message)
         
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": PAGE_CONTEXT},
                 {"role": "user", "content": user_message}
