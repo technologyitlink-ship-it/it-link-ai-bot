@@ -1,11 +1,13 @@
 import os
 import requests
 import json
+import time
 from openai import OpenAI
 
 # Configuration
 PAGE_ACCESS_TOKEN = "EAASdREpsBg4BRJLmKbsgKmF1bKZCzOTTAST7nZAcYwHrhMx9r9Bd16K6ZA8E6pq8fjM3UR4MUfQFhMmZC6j8ZB0B3VILG7WyJucMKICDiktPCeFShW42WCXcKmINDcDZCieuS5tDmZC7IYpH3ws7IvQYOtpiPuoCb6Ig7OZBoHj2LA5RZANhvcY5waXaB1uYAZCZCNxQ5lPHHC5"
 PAGE_ID = "589535454754591"
+CANVA_DESIGN_ID = "DAGnnTGbqYQ"  # "Instagram Post - IT LINK CCTV Installation"
 
 def generate_content():
     try:
@@ -31,7 +33,6 @@ def generate_content():
         - Output ONLY the post content.
         """
         
-        # Use a supported model: gpt-4.1-mini
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
@@ -49,12 +50,50 @@ def generate_content():
         print(f"Error generating content: {e}")
         return None
 
-def post_to_page(message):
-    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/feed"
-    payload = {
-        "message": message,
-        "access_token": PAGE_ACCESS_TOKEN
-    }
+def get_canva_image_url():
+    """Export the Canva design and return the download URL."""
+    try:
+        # We'll use the manus-mcp-cli to call the Canva MCP
+        cmd = f"manus-mcp-cli tool call export-design --server canva --input '{{\"design_id\": \"{CANVA_DESIGN_ID}\", \"format\": {{\"type\": \"png\", \"pages\": [1]}}, \"user_intent\": \"Export design for Facebook post\"}}'"
+        result_output = os.popen(cmd).read()
+        
+        # The result is saved to a JSON file, we need to find it
+        # Based on previous logs, it's in /home/ubuntu/.mcp/tool-results/
+        import glob
+        list_of_files = glob.glob('/home/ubuntu/.mcp/tool-results/*canva_export-design.json')
+        if not list_of_files:
+            return None
+            
+        latest_file = max(list_of_files, key=os.path.getctime)
+        with open(latest_file, 'r') as f:
+            data = json.load(f)
+            
+        if data.get("job", {}).get("status") == "success":
+            urls = data["job"].get("urls", [])
+            if urls:
+                return urls[0]
+        return None
+    except Exception as e:
+        print(f"Error getting Canva image: {e}")
+        return None
+
+def post_to_page(message, image_url=None):
+    if image_url:
+        # Post with photo
+        url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos"
+        payload = {
+            "caption": message,
+            "url": image_url,
+            "access_token": PAGE_ACCESS_TOKEN
+        }
+    else:
+        # Post text only
+        url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/feed"
+        payload = {
+            "message": message,
+            "access_token": PAGE_ACCESS_TOKEN
+        }
+        
     try:
         response = requests.post(url, data=payload)
         result = response.json()
@@ -67,12 +106,17 @@ def post_to_page(message):
 if __name__ == "__main__":
     print("Generating content...")
     content = generate_content()
-    if content:
-        print("Content generated successfully:")
-        print("-" * 30)
-        print(content)
-        print("-" * 30)
-        print("Posting to Facebook Page...")
-        post_to_page(content)
-    else:
+    if not content:
         print("Failed to generate content.")
+        exit(1)
+        
+    print("Exporting Canva design...")
+    image_url = get_canva_image_url()
+    
+    if image_url:
+        print(f"Image exported successfully: {image_url}")
+    else:
+        print("Failed to export Canva image, posting text only.")
+        
+    print("Posting to Facebook Page...")
+    post_to_page(content, image_url)
